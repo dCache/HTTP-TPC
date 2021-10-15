@@ -1,0 +1,657 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<rfc ipr="trust200902" category="info" version="3" submissionType="independent">
+  <front>
+    <title>HTTP Third Party Transfer</title>
+
+    <seriesInfo name="RFC" status="informational" stream="independent"
+                value="draft-http-tpc-01"/>
+
+    <author initials="AP." surname="Millar" fullname="Paul Millar">
+      <organization abbrev="DESY">Deutsches Elektronen-Synchrotron</organization>
+      <address>
+        <postal>
+          <street>Notkestrasse 85</street>
+          <city>Hamburg</city>
+          <code>22607</code>
+          <country>Germany</country>
+        </postal>
+        <email>paul.millar@desy.de</email>
+      </address>
+    </author>
+    <!-- etc -->
+
+    <date day="10" month="August" year="2021"/>
+
+    <keyword>webdav</keyword>
+    <keyword>HTTP</keyword>
+    <keyword>data</keyword>
+
+    <abstract>
+      <t>
+        HTTP-TPC is a protocol, based on HTTP, for copying an entity
+        located on one server to a different server.  The main benefit
+        is to allow for optimal the network use.  One typical
+        optimisation is achieved by allowing the two servers to
+        communicate directly so that the data representing the entity
+        is not relayed through the controlling client.
+      </t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>
+        HTTP-TPC is an extension to <relref target="RFC7231"
+        section="">HTTP</relref> that allows a client to request that
+        an HTTP entity is copied from one server to another without
+        the data describing that entity passing through the
+        controlling client.  Any such transfer of an entity is called
+        a third-party transfer.  In this document, we will use the
+        terms entities and files interchangeably; however, the
+        resource could be any entity.
+      </t>
+
+      <t>
+        For any given transfer, the two servers involved are labelled
+        in two distinct ways.  The SOURCE is the server that has the
+        resource the client wishes to transfer initially, while the
+        DESTINATION is the server that should receive the resource.
+        Independently, the ACTIVE PARTY is the server to which the
+        client makes the third-party copy request, while the remaining
+        server is the PASSIVE PARTY.  When the source server is the
+        active party then the transfer is referred to as a PUSH
+        REQUEST, while the destination server is the active party for
+        a PULL REQUEST.
+      </t>
+
+      <t>
+	This control protocol is a network protocol based on HTTP.  It
+	is designed to be compatible with similar HTTP-based protocols
+	such as WebDAV.  This should allow a server to support both
+	HTTP-TPC and other protocols.  The control protocol allows the
+	client to request a file is transferred, terminate an on-going
+	transfer, receive progress and other diagnostic information
+	about an on-going transfer, and learn when the transfer has
+	finished.  The transfer may be unsuccessful, in which case the
+	client may receive a simple error message.
+      </t>
+
+      <t>
+	The data protocol is a network protocol between the two
+	servers that is used to transfer a representation of the
+	entity.  The interaction with the data protocol is under
+	control of the active party.  Typically, the data protocol
+	follows a client-server pattern, with the active party
+	adopting the role of the data protocol client.
+      </t>
+
+      <figure>
+	<name>
+	  Example HTTP-TPC push request.
+	</name>
+	<artwork type="ascii-art">
+   +----------------+                     +-----------------+
+   |  Src server    |    Data protocol    |  Dest server    |
+   |  Active party  |  ================>  |  Passive party  |
+   +----------------+                     +-----------------+
+           ^
+           | Control
+           | protocol
+           |
+      +----------+
+      |  Client  |
+      +----------+
+	</artwork>
+      </figure>
+
+      <figure>
+	<name>
+	  Example HTTP-TPC pull request.
+	</name>
+	<artwork type="ascii-art">
+   +-----------------+                     +----------------+
+   |  Src server     |    Data protocol    |  Dest server   |
+   |  Passive party  |  &lt;================  |  Active party  |
+   +-----------------+                     +----------------+
+                                                   ^
+                                                   | Control
+                                                   | protocol
+                                                   |
+                                              +----------+
+                                              |  Client  |
+                                              +----------+
+	</artwork>
+      </figure>
+
+      <t>
+        Although the control and data protocols are independent, the
+        HTTP-TPC client may need some control over the data protocol.
+        This is achieved through extending the control protocol with
+        data-protocol-specific features.  This extension should be
+        documented when describing the data protocol.
+      </t>
+
+      <t>
+	The remaining part of this document is split into the
+	following sections.  The next section describes the control
+	protocol in detail but avoids any data-protocol specific
+	aspects.  The section after that covers the topic of
+	delegation as a mechanism to support accessing protected
+	resources on the passive endpoint.  The section after that
+	describes the data-over-HTTP data protocol.  The document
+	concludes with a section describing some security
+	considerations.
+      </t>
+    </section>
+
+    <section title="Control protocol">
+      <t>
+        This section describes how a client initiates a third-party
+        transfer, receives feedback and optionally terminates an
+        incomplete transfer.
+      </t>
+
+      <section title="Initiating a third-party copy">
+        <t>
+          The client initiates a transfer by issuing an HTTP COPY
+          request to the active party.  The path of the request is the
+          resource on the active party.  For a pull request, the path
+          represents the intended destination of the new resource.
+          For a push request, the path represents the resource that
+          should be copied.
+        </t>
+
+	<t>
+	  The presence of the 'Source' or 'Destination' HTTP request
+	  header indicates whether the COPY request is a pull or a
+	  push request.  A request MUST NOT contain both HTTP request
+	  headers.  A pull request MUST include the 'Source' HTTP
+	  request header, while a push request MUST include the
+	  'Destination' HTTP request header.
+	</t>
+
+	<t>
+	  The 'Source' or 'Destination' header value is a URI that
+	  describes how the transfer will take place.  The scheme of
+	  the URI describes the data protocol.  The exact semantics of
+	  the URI is described by the data protocol documentation.  If
+	  the data-transfer protocol is unsupported then the server
+	  SHOULD reply with a 501 status code.
+        </t>
+
+        <t>
+	  The server MAY implement a limit on the number of concurrent
+	  transfers.  The server SHOULD reject the request with a 429
+	  status code if accepting the request would exceed this
+	  policy.
+        </t>
+
+        <t>
+          The data protocol may provide the client with some control
+          over how data is transferred.  The exact nature of this
+          control will depend on the data-transfer protocol.  To
+          faciliate interoperability, is recommended that such control
+          is achieved by specifying additional HTTP request headers in
+          the COPY request, where these extra headers starts with the
+          prefix 'Transfer'.
+        </t>
+
+        <t>
+	  Additional information may also be passed through the URI;
+	  for example, as part of a URL's query part.  This document
+	  recommends that data protocol makes few limitations on the
+	  URI, allowing the HTTP-TPC client to use the URI to send
+	  additional information to the passive endpoint.  The exact
+	  nature of such information is data-protocol specific.
+        </t>
+
+        <t>
+          The 'Accept' HTTP request header is optional.  If provided,
+          it SHOULD be 'text/perf-marker-stream'.  If the client omits
+          the 'Accept' header then the server SHOULD assume the value
+          'text/perf-marker-stream'.
+        </t>
+      </section>
+
+      <section title="Authorizing the COPY request">
+        <t>
+          The active party MAY require HTTP-TPC clients to
+          authenticate all transfer requests.  Such authentication
+          SHOULD follow an existing HTTP authentication mechanism as
+          part of the COPY request.
+        </t>
+
+        <t>
+          The active party MAY impose an authorisation model.  A
+          server MAY reject a transfer request from a client that
+          would violate its policy, it MAY accept the request and not
+          deliver any progress events, or the server MAY accept the
+          request and deliver progress events with any sensitive data
+          omitted.
+        </t>
+      </section>
+
+      <section title="Server response">
+	<t>
+	  On receiving a COPY request, the active party MAY redirect
+	  the client to some other server that will handle the request
+	  by returning a 307 status code and a <tt>Location</tt>
+	  header in the response.  On receiving a 307 status code, the
+	  client SHOULD issue the same COPY request to the supplied
+	  URL.
+	</t>
+	
+        <t>
+          When processing a request, the active party should validate
+          the supplied information and check that the COPY request has
+          been authorised.  If there are no problems the server SHOULD
+          respond with 202 status code.  The response headers SHOULD
+          have the 'Content-Type' response header with the value
+          <tt>text/perf-marker-stream</tt>.
+        </t>
+
+        <t>
+          The COPY request entity is a stream of information
+          describing the transfer.  The characters MUST be encoded
+          with UTF-8 and SHOULD be sent using chunked encoding.  The
+          response is framed as multiple lines, with lines separated
+          by the LINE FEED character (U+000A).  Under UTF-8, this is
+          encoded as the 0x0a octet.
+        </t>
+
+        <t>
+          For the duration of the transfer, the active party SHOULD
+          send reports on the transfer's progress.  The active party
+          MAY send reports non-periodically; for example, it may send
+          information when the transfer has undergone some significant
+          change.  The server SHOULD ensure there is a maximum
+          duration between successive reports.  The format of these
+          progress reports is described in the following section.
+        </t>
+
+        <t>
+          Once the transfer has finished, there is a final line
+          describing whether the transfer was successful.  A single
+          line of "Success" indicates the active party believes the
+          transfer was succesful.  If the transfer was unsuccessful
+          then the response is "Failed: " followed by a short,
+          single-line human-readable explanation describing what went
+          wrong.
+        </t>
+
+        <t>
+          Once the client has received the single line transfer
+          result, the client MUST accept and ignore any subsequent
+          content in the COPY request entity.
+        </t>
+      </section>
+
+      <section title="Initiating the data transfer">
+	<t>
+	  The active party MAY accept the request and queue it.
+	  During this time the active party SHOULD send progress
+	  reports that do not contain any data-protocol specific
+	  properties.
+	</t>
+
+	<t>
+	  The active party MAY delegate responsibility for
+	  establishing the data protocol to some other server within a
+	  cluster.  The HTTP-TPC client MUST NOT assumption from which
+	  IP address data protocol activity will take place.
+	</t>
+      </section>
+
+      <section title="Transfer status reports">
+        <t>
+          The COPY entity contains a series of zero or more transfer
+          status reports.  Each transfer status report starts with the
+          line <tt>Perf Marker</tt>.  There are then several property
+          statements.  The report is terminated by a single line
+          <tt>End</tt>.
+        </t>
+
+        <t>
+          The transfer status property statements are key-value pairs.
+          Each property statement has the key word the value
+          <tt>:&#160;</tt> and finally the value for this attribute.
+        </t>
+
+	<t>
+	  The following data-protocol-agnostic properties are defined:
+	</t>
+
+	<dl>
+	  <dt><tt>Timestamp</tt></dt>
+	  <dd>
+	    The time when the report was generated.  The value is the
+	    current Unix time: the number of elapsed seconds since the
+	    Unix epoch (1970-01-01T00:00:00Z).
+	  </dd>
+
+	  <dt><tt>RemoteConnections</tt></dt>
+	  <dd>
+	    The network connections over which data is flowing.  The
+	    value is a comma-separated list of connection statements.
+	    Each connection statement has the form
+	    <tt>PROTOCOL:DESCRIPTION</tt>.  If <tt>PROTOCOL</tt> is
+	    <tt>tcp</tt> then <tt>DESCRIPTION</tt> is
+	    <tt>ADDRESS:PORT</tt> where <tt>ADDRESS</tt> is either an
+	    IPv4 address in dot-decimal notation or an IPv6 address in
+	    square brackets.  The order of the elements is not
+	    significant, unless noted otherwise in the data-transfer
+	    protocol description.
+	  </dd>
+	</dl>
+
+        <t>
+	  The data-protocol description MAY define additional
+	  properties.  In addition, the active party MAY include
+	  implementation-specific details as transfer status property
+	  statements with vendor-specific key words.  Clients MUST
+	  ignore all transfer status property statements with unknown
+	  key words.
+        </t>
+      </section>
+
+      <section title="Terminating a transfer">
+        <t>
+          The HTTP-TPC client must maintain the TCP connection with
+          the active party over which the HTTP COPY request was made
+          for the duration of the transfer.  If the client disconnects
+          the TCP connection before the transfer completes then the
+          transfer is cancelled.
+        </t>
+
+        <t>
+          The active party SHOULD terminate a transfer promptly once
+          it detects the client has disconnected.  If the transfer is
+          a PUSH then the server SHOULD remove the partially uploaded
+          file whenever possible.
+        </t>
+      </section>
+    </section>
+
+    <section title="Authorising the data transfer">
+      <t>
+	The passive party MAY require the active party present some
+	credential with which to authorise the data transfer.  This
+	credential may be stored on the active party or be supplied by
+	the HTTP-TPC client through a process called delegation.
+	Therefore, the client may need to delegate authority to the
+	active party in order that the active party may transfer the
+	data.
+      </t>
+
+      <t>
+        This document does not describe any mechanism through which
+        the HTTP-TPC client can discover whether delegation is needed.
+        Instead, the client is expected to discover this through
+        direct communication with the passive endpoint or through some
+        other (out-of-band) mechanism.
+      </t>
+
+      <t>
+	In general, the control protocol does not provide a mechanism
+	to support delegation.  This is because the delegation will
+	likely depend on the data protocol's authorisation model.
+	Instead, the data-transfer protocol description should
+	describe how delegation is achieved, when necessary.
+      </t>
+    </section>
+
+    <section title="The data-over-HTTP protocol">
+      <t>
+        This section describes a data protocol that uses HTTP requests
+        to transfer a file's data.  It is intended to be compatible
+        with many HTTP-based direct transfer protocols, allowing it to
+        integrate with existing services.
+      </t>
+
+      <section title="Selecting the protocol">
+	<t>
+          The data-over-HTTP protocol is selected if the
+          <tt>Destination</tt> or <tt>Source</tt> header URI in the
+          COPY request is a URL with the scheme <tt>http</tt> or
+          <tt>https</tt>.
+	</t>
+
+	<t>
+          The URL describes the location on a resource on the passive
+          endpoint.  The URL MUST NOT contain a userinfo part.  The
+          port number MAY be omitted.  If the port is omitted then a
+          default port is used: for <tt>http</tt> scheme the default
+          is 80 and for <tt>https</tt> scheme the default is 443.  If
+          the URL contains a query part then the active server SHOULD
+          include this when making a request with the passive server.
+	</t>
+      </section>
+
+      <section title="Transferring the data">
+	<t>
+	  The underlying protocol is HTTP.  The active party MUST
+	  support HTTP/1.1 and MAY support HTTP/2.  The active party
+	  MAY persist connections across multiple requests provided
+	  TLS client authentication is consistent.
+	</t>
+
+	<t>
+	  For an HTTP-TPC PUSH request, the active party will make an
+	  HTTP PUT request to the passive party.  For an HTTP-TPC PULL
+	  request the active party will make an HTTP GET request.
+	</t>
+
+	<t>
+	  The active party MAY have some policies to ensure suitable
+	  progress is made; for example, by timing out requests that
+	  take too long.
+	</t>
+
+	<t>
+	  The active party MAY take steps to ensure the integrity of
+	  the transferred data.
+	</t>
+      </section>
+
+      <section title="Extensions to control protocol">
+        <t>
+          This section describes additional behaviour of the control
+          protocol that is specific to the data-over-HTTP protocol.
+        </t>
+
+        <t>
+	  The HTTP-TPC client may provide headers that the active
+	  party SHOULD include in any data-over-HTTP requests.  These
+	  headers are included in the control protocol COPY request
+	  with the prefix <tt>TransferHeader</tt>; for example, the
+	  request header <tt>TransferHeaderAuthorization</tt> with
+	  some value indicates that the data-over-HTTP requests SHOULD
+	  include a corresponding <tt>Authorization</tt> header with
+	  that same value.
+	</t>
+
+	<t>
+	  The active party SHOULD ignore any <tt>TransferHeader</tt>
+	  headers that could jeopardise the protocol; for example, the
+	  active party SHOULD ignore an attempt by the HTTP-TPC client
+	  to set the <tt>Content-Length</tt>.
+        </t>
+      </section>
+
+      <section title="Delegation">
+        <t>
+	  Many HTTP authentication schemes make use of request
+	  headers.  A trivial form of delegation is possible by
+	  including the equivalent header in the COPY request, with
+	  the <tt>TransferHeader</tt> prefix.
+        </t>
+
+	<t>
+	  The HTTP-TPC client MAY obtain a bearer token that limits
+	  authorisation to the minimum needed for the data transfer.
+	  This token could come from the passive endpoint directly or
+	  from some service the passive endpoint trusts.  <relref
+	  target="RFC6749" section="">OAuth 2.0</relref> provides
+	  a framework for building such a token-based delegation.
+	  Details of how the client obtains such a token are outside
+	  the scope of this document.
+	</t>
+      </section>
+
+      <section title="Progress markers">
+	<t>
+	  The following additional information MAY be contained within
+	  progress markers.
+	</t>
+	
+	<dl>
+	  <dt><tt>Stripe Index</tt></dt>
+	  <dd>
+	    This property indicates that the following <tt>Stripe</tt>
+	    properties refer to a specific network connection.  The
+	    value is a zero-index integer for this particular
+	    connection.
+	  </dd>
+
+	  <dt><tt>Stripe Start Time</tt></dt>
+	  <dd>
+	    The time when the connection was established.  The value
+	    is the Unix time: the number of elapsed seconds since the
+	    Unix epoch (1970-01-01T00:00:00Z).
+	  </dd>
+	  
+	  <dt><tt>Stripe Transfer Time</tt></dt>
+	  <dd>
+	    The duration during which the connection has been used to
+	    deliver data.
+	  </dd>
+
+	  <dt><tt>Stripe Bytes Transferred</tt></dt>
+	  <dd>
+	    The number of octets of file data that has been delivered
+	    over this connection so far.
+	  </dd>
+	  
+	  <dt><tt>Total Strip Count</tt></dt>
+	  <dd>
+	    The value is an integer describing the number of
+	    connections that have been established to transfer the
+	    data.
+	  </dd>
+	</dl>
+      </section>
+
+      <section title="Data integrety">
+        <t>
+	  Data integrety may be achieved by obtaining a digest value
+	  from the destination and comparing this against either a
+	  digest value from the source or some know good digest value.
+	  The two digest values must have been generated by the same
+	  algorithm in order that the comparison is valid.  The
+	  comparison MAY be done my the active party and it MAY be
+	  done by the HTTP-TPC client.
+	</t>
+	  
+	<t>
+	  There are several mechanisms through which a client may
+	  learn the digest of a file: the <relref target="RFC1864"
+	  section="">Content-MD5 header</relref> and <relref
+	  target="RFC3230" section="">RFC 3230</relref> provide two
+	  such examples.
+        </t>
+      </section>
+    </section>
+
+    <section title="Security considerations">
+      <t>
+        Transfers that require the active party to authenticate or
+        otherwise present an authorisation token to the passive party
+        require that the active party has the necessary credential
+        before starting the transfer.  The credential MAY be stored
+        locally or MAY come from the HTTP-TPC client through some
+        delegation process.  The active party MUST store the
+        credential securely for the duration of the transfer and MUST
+        destroy the credential promptly once the transfer has
+        completed.  The stored credential MUST only be used for the
+        specific transfer.  The server MUST ensure that the credential
+        is not included in any log files in such a way that
+        compromises that credential.
+      </t>
+
+      <t>
+	The active party may be used as an attack amplification, where
+	an HTTP-TPC client may establish sufficient concurrent
+	transfers to impact the passive party.  Therefore the active
+	party SHOULD implement policies that limit the number of
+	concurrent transfers and SHOULD monitor activity.
+      </t>
+
+      <t>
+	The active and passive endpoints MAY have a trust
+	relationship; for example, where the passive endpoint does not
+	require strong authentication from the active party.  If such
+	deployment is made then care should be taken that this trust
+	isn't exploited to achieve priviledge escalation.
+      </t>
+    </section>
+  </middle>
+
+  <back>
+    <references>
+      <name>Informative References</name>
+      <reference anchor="RFC7231">
+        <front>
+          <title>Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content</title>
+          <author role="editor" initials="R." surname="Fielding" fullname="R. Fielding">
+            <organization abbrev="Adobe">Adobe Inc</organization>
+          </author>
+          <author role="editor" initials="J." surname="Reschke" fullname="J. Reschke">
+            <organization>greenbytes</organization>
+	  </author>
+          <date month="June" year="2014"/>
+        </front>
+ 	<seriesInfo name="RFC" value="7231"/>
+      </reference>
+
+      <reference anchor="RFC3230">
+        <front>
+          <title>Instance Digests in HTTP</title>
+          <author role="editor" initials="J." surname="Mogul" fullname="J. Mogul">
+            <organization abbrev="Compaq WRL">Compaq WRL</organization>
+          </author>
+          <author role="editor" initials="A." surname="Van Hoff" fullname="A. Van Hoff">
+            <organization>Marimba</organization>
+	  </author>
+          <date month="January" year="2002"/>
+        </front>
+ 	<seriesInfo name="RFC" value="3230"/>
+      </reference>
+    
+      <reference anchor="RFC1864">
+        <front>
+          <title>The Content-MD5 Header Field</title>
+          <author role="editor" initials="J." surname="Myers" fullname="J. Myers">
+            <organization abbrev="Compaq WRL">Carnegie Mellon</organization>
+          </author>
+          <author role="editor" initials="M." surname="Rose" fullname="M. Rose">
+            <organization>Dover Beach Consulting, Inc.</organization>
+	  </author>
+          <date month="October" year="1995"/>
+        </front>
+ 	<seriesInfo name="RFC" value="3230"/>
+      </reference>
+    
+      <reference anchor="RFC6749">
+        <front>
+          <title>The OAuth 2.0 Authorization Framework</title>
+          <author role="editor" initials="D." surname="Hardt" fullname="D. Hardt">
+            <organization abbrev="Microsoft">Microsoft</organization>
+          </author>
+          <date month="October" year="2012"/>
+        </front>
+ 	<seriesInfo name="RFC" value="6749"/>
+      </reference>
+    </references>
+  </back>
+</rfc>
