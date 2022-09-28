@@ -241,7 +241,7 @@
 	  client SHOULD issue the same COPY request to the supplied
 	  URL.
 	</t>
-	
+
         <t>
           When processing a request, the active party should validate
           the supplied information and check that the COPY request has
@@ -504,7 +504,7 @@
 	  The following additional information MAY be contained within
 	  progress markers.
 	</t>
-	
+
 	<dl>
 	  <dt><tt>Stripe Index</tt></dt>
 	  <dd>
@@ -520,7 +520,7 @@
 	    is the Unix time: the number of elapsed seconds since the
 	    Unix epoch (1970-01-01T00:00:00Z).
 	  </dd>
-	  
+
 	  <dt><tt>Stripe Transfer Time</tt></dt>
 	  <dd>
 	    The duration during which the connection has been used to
@@ -532,7 +532,7 @@
 	    The number of octets of file data that has been delivered
 	    over this connection so far.
 	  </dd>
-	  
+
 	  <dt><tt>Total Strip Count</tt></dt>
 	  <dd>
 	    The value is an integer describing the number of
@@ -552,7 +552,7 @@
 	  comparison MAY be done my the active party and it MAY be
 	  done by the HTTP-TPC client.
 	</t>
-	  
+
 	<t>
 	  There are several mechanisms through which a client may
 	  learn the digest of a file: the <relref target="RFC1864"
@@ -627,7 +627,7 @@
         </front>
  	<seriesInfo name="RFC" value="3230"/>
       </reference>
-    
+
       <reference anchor="RFC1864">
         <front>
           <title>The Content-MD5 Header Field</title>
@@ -641,7 +641,7 @@
         </front>
  	<seriesInfo name="RFC" value="3230"/>
       </reference>
-    
+
       <reference anchor="RFC6749">
         <front>
           <title>The OAuth 2.0 Authorization Framework</title>
