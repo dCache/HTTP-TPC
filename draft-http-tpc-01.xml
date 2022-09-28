@@ -21,7 +21,7 @@
     </author>
     <!-- etc -->
 
-    <date day="10" month="August" year="2021"/>
+    <date day="28" month="September" year="2022"/>
 
     <keyword>webdav</keyword>
     <keyword>HTTP</keyword>
@@ -271,20 +271,39 @@
         </t>
 
         <t>
-          Once the transfer has finished, there is a final line
-          describing whether the transfer was successful.  A single
-          line of "Success" indicates the active party believes the
-          transfer was succesful.  If the transfer was unsuccessful
-          then the response is "Failed: " followed by a short,
-          single-line human-readable explanation describing what went
-          wrong.
+          Once the transfer has finished, there is a final report
+          describing the result of the transfer.  This report consists
+          of one summary line followed by zero or more ancillary
+          lines.
+	</t>
+
+	<t>
+	  If the transfer was successful then the summary line is
+	  "Success".  If the transfer was unsuccessful then the
+	  summary line is "Failed: " followed by a short, single-line
+	  human-readable explanation describing what went wrong.
+	</t>
+
+	<t>
+	  The ancillary lines consist of a case-insensitive name
+	  followed by a colon (:) and then by the value.  Any
+	  whitespace between the colon and the value is ignored.  The
+	  client MUST ignore any ancillary line that does not conform
+	  to this format.  The claim MAY apply local policies on
+	  ancillary lines (e.g., maximum length) and MAY use some
+	  recovery strategy if an ancillary line violates local
+	  policies.  The client MUST ignore any ancillary line for
+	  which it does not understand the name.
         </t>
 
-        <t>
-          Once the client has received the single line transfer
-          result, the client MUST accept and ignore any subsequent
-          content in the COPY request entity.
-        </t>
+	<t>
+	  Ancillary lines may describe aspects of the transfer that
+	  are protocol agnostic (e.g., total transfer time, peak
+	  bandwidth) or may convey information specific to the
+	  transfer protocol.  It is recommended that transfer-specific
+	  information adopt a common prefix for all ancillary line
+	  names.
+	</t>
       </section>
 
       <section title="Initiating the data transfer">
@@ -538,6 +557,29 @@
 	    The value is an integer describing the number of
 	    connections that have been established to transfer the
 	    data.
+	  </dd>
+	</dl>
+      </section>
+
+      <section title="Ancillary lines">
+	<t>
+	  The following section lists the names and corresponding
+	  semantics for the ancillary lines that may be present in the
+	  server's final report if data-over-HTTP was selected as the
+	  data transport.
+	</t>
+
+	<dl>
+	  <dt><tt>HTTP-Status-Line</tt></dt>
+	  <dd>
+	    This ancillary line MAY be included independent of whether
+	    the transfer was successful.  There is, at most, one
+	    ancillary line with this name.  The value is the HTTP
+	    status-line (as defined in RFC 7230 §3.1.2) of the GET
+	    (pull request) or PUT (push request), excluding the final
+	    CRLF characters.  If several requests were made (e.g., due
+	    to redirection or a retry policy) then the value is taken
+	    from the final request.
 	  </dd>
 	</dl>
       </section>
